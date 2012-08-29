@@ -24,14 +24,15 @@ import org.apache.log4j.Logger;
 public class NameServerApp implements Application, LifecycleApplication {
 
     private static Logger log = Logger.getLogger(NameServerApp.class);
-    static final String LISTEN = "Listen_On_List";
-    static final String MC_IPV4 = "A_Record";
-    static final String MC_IPV6 = "AAAA_Record";
-    static final String MXSERVER = "Default_MX_Record";
-    static final String NAMESERVERS = "Namservers_List";
-    static final String PRIMARY_NS = "Primary_Namserver";
-    static final String ADMIN_EMAIL = "NS_Admin_Email";
+    static final String LISTEN = "listenOnList";
+    static final String MC_IPV4 = "aRecord";
+    static final String MC_IPV6 = "aaaaRecord";
+    static final String MXSERVER = "defaultMxRecord";
+    static final String NAMESERVERS = "nameServerList";
+    static final String PRIMARY_NS = "primaryNameserver";
+    static final String ADMIN_EMAIL = "nsAdminEmail";
 
+    private SpliffyZoneFactory zoneFactory;
     private Service nameserver;
 
     @Override
@@ -42,18 +43,20 @@ public class NameServerApp implements Application, LifecycleApplication {
     @Override
     public void init(SpliffyResourceFactory resourceFactory, AppConfig config) throws Exception {
    
-    	SpliffyZoneFactory zoneFactory = new SpliffyZoneFactory(resourceFactory.getSessionManager());
+    	zoneFactory = new SpliffyZoneFactory(resourceFactory.getSessionManager());
+    	initZoneData(config);
+    	initResourceRecords(config);
+    	InetSocketAddress[] addrs = initServerConnection(config);
+        nameserver = new NameServer(zoneFactory, addrs);
+        nameserver.start();
+    }
+
+    private void initZoneData(AppConfig config) {
     	
-    	String listenOnValue = config.get(LISTEN);
-        String serverIp4Value = config.get(MC_IPV4);
-        String serverIp6Value = config.get(MC_IPV6);
         String nsValue = config.get(NAMESERVERS);
-        String mxValue = config.get(MXSERVER);
         String primaryNsValue = config.get(PRIMARY_NS);
         String emailValue = config.get(ADMIN_EMAIL);
-        log.info("init: listenon=" + listenOnValue);
         
-        /* Need valid values for authoritative nameservers */
         if ( StringUtils.isBlank(StringUtils.remove(nsValue, ','))) {
         	throw new RuntimeException("Please specify " + NAMESERVERS);
         }
@@ -66,7 +69,6 @@ public class NameServerApp implements Application, LifecycleApplication {
         	emailValue = "admin@" + host;
         }
 
-        /* Set the zone data */
         String[] stringArray = nsValue.split(",");
         List<String> nameServers = new LinkedList<String>();
         for ( String s : stringArray ) {
@@ -78,8 +80,15 @@ public class NameServerApp implements Application, LifecycleApplication {
         }
         zoneFactory.setPrimaryMaster(primaryNsValue.trim());
         zoneFactory.setAdminEmail(emailValue.trim());
-
-        /* Set Milton-Cloud's A Record */
+    }
+    
+    private void initResourceRecords(AppConfig config) {
+    	
+        String serverIp4Value = config.get(MC_IPV4);
+        String serverIp6Value = config.get(MC_IPV6);
+        String mxValue = config.get(MXSERVER);
+        
+    	/* Set Milton-Cloud's A Record */
         if ( !StringUtils.isBlank(serverIp4Value) ) {
             try {
             	InetAddress addr = InetAddress.getByName(serverIp4Value);
@@ -111,11 +120,17 @@ public class NameServerApp implements Application, LifecycleApplication {
         if ( !StringUtils.isBlank(mxValue) ) {
         	zoneFactory.setDefaultMx(mxValue.trim());
         }
-        
-        /* Set the IP:port combinations for server to bind to */
+    }
+    
+    private InetSocketAddress[] initServerConnection(AppConfig config) throws UnknownHostException {
+    	
+    	String listenOnValue = config.get(LISTEN);
+    	log.info("init: listenon=" + listenOnValue);
+    	
+    	/* Set the IP:port combinations for server to bind to */
         InetSocketAddress[] addrs;
         if ( !StringUtils.isBlank(listenOnValue) ) {
-        	 stringArray = listenOnValue.split(",");
+        	 String[] stringArray = listenOnValue.split(",");
         	 addrs = new InetSocketAddress[stringArray.length];
              for (int j = 0; j < stringArray.length; j++) {
             	 String s = stringArray[j];
@@ -132,12 +147,9 @@ public class NameServerApp implements Application, LifecycleApplication {
         } else {
         	addrs = new InetSocketAddress[]{ new InetSocketAddress(53) };
         }
-       
-        /* Start nameserver */
-        nameserver = new NameServer(zoneFactory, addrs);
-        nameserver.start();
+       return addrs;
     }
-
+    
     @Override
     public void shutDown() {
         if (nameserver != null) {
@@ -173,8 +185,8 @@ public class NameServerApp implements Application, LifecycleApplication {
 
     @Override
     public String getSummary(Organisation organisation, Website website) {
-        return "Runs an authoritative-only (non-recursive, non-caching) nameserver in the background, which " +
-        		"can answer queries for any Websites that have been created. Requires configuration.";
+        return "Runs an authoritative-only nameserver in the background, which can answer queries " +
+        		"for any websites that have been created. Requires configuration.";
         		
     }
     
