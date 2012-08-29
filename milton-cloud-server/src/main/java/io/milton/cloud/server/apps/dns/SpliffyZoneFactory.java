@@ -99,13 +99,10 @@ public class SpliffyZoneFactory implements ZoneFactory {
 			/*
 			 * 	If query was for existing www.x.y, return a zone rooted at x.y
 			 */
-			else if (zoneRootDomain != null && numDots == 2 && 
-					queriedDomain.startsWith("www.")) {
-				String altDomain = queriedDomain.substring(4);
-				Website altWebsite = findWebsite(altDomain, session);
-				zoneRootDomain = altDomain;
-				if (altWebsite != null) {
-					cache.put(altDomain, altWebsite);
+			else if (numDots == 2 && queriedDomain.startsWith("www.")) {
+				if (queriedDomain.equals(zoneRootDomain)) {
+					String altDomain = queriedDomain.substring(4);
+					zoneRootDomain = altDomain;		
 				}
 			}
 			
@@ -130,22 +127,12 @@ public class SpliffyZoneFactory implements ZoneFactory {
 		return website;
 	}
 	
-	private static String findEquivalent(String domain) {
-		int numDots = StringUtils.countOccurrencesOf(domain, ".");
-		if ( numDots == 1 ) {
-			return "www." + domain;
-		}
-		if ( numDots == 2 && domain.startsWith("www.")) {
-			return domain.substring(4);
-		}
-		return null;
-	}
-	
 	private static String parent(String domain) {
-		int firstDot = domain.indexOf('.');
-		if (firstDot <= 0 || firstDot == domain.length() - 1) {
+		int numDots = StringUtils.countOccurrencesOf(domain, ".");
+		if ( numDots < 2 ) {
 			return null;
 		}
+		int firstDot = domain.indexOf('.');
 		return domain.substring(firstDot + 1);
 	}
 
@@ -226,7 +213,7 @@ public class SpliffyZoneFactory implements ZoneFactory {
 			if (!domainLower.endsWith(rootDomain)) {
 				return null;
 			}
-			if (parent(domainLower) == null || domainLower.startsWith("*")) {
+			if (domainLower.indexOf('.') == -1 || domainLower.startsWith("*")) {
 				return null;
 			}
 
@@ -289,6 +276,18 @@ public class SpliffyZoneFactory implements ZoneFactory {
 					session.close();
 				}
 			}
+		}
+		
+		
+		private String findEquivalent(String domain) {
+			int numDots = StringUtils.countOccurrencesOf(domain, ".");
+			if ( numDots == 1 ) {
+				return "www." + domain;
+			}
+			if ( numDots == 2 && domain.startsWith("www.")) {
+				return domain.substring(4);
+			}
+			return null;
 		}
 	}
 
