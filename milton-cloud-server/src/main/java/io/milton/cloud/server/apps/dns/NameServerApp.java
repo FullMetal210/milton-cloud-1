@@ -17,6 +17,8 @@ import io.milton.dns.NameServer;
 import io.milton.dns.Utils;
 import io.milton.vfs.db.Organisation;
 import io.milton.vfs.db.Website;
+import io.milton.vfs.db.utils.SessionManager;
+
 import java.net.Inet4Address;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
@@ -32,8 +34,8 @@ public class NameServerApp implements Application, LifecycleApplication {
     static final String PRIMARY_NS = "primaryNameserver";
     static final String ADMIN_EMAIL = "nsAdminEmail";
 
-    private SpliffyDomainFactory domainFactory;
-    private Service nameserver;
+    private SpliffyZoneFactory zoneFactory;
+    private NameServer nameserver;
 
     @Override
     public String getInstanceId() {
@@ -43,11 +45,13 @@ public class NameServerApp implements Application, LifecycleApplication {
     @Override
     public void init(SpliffyResourceFactory resourceFactory, AppConfig config) throws Exception {
    
-    	domainFactory = new SpliffyDomainFactory(resourceFactory.getSessionManager());
+    	SessionManager sessionManager = resourceFactory.getSessionManager();
+    	zoneFactory = new SpliffyZoneFactory(sessionManager);
     	initZoneData(config);
     	initResourceRecords(config);
     	InetSocketAddress[] addrs = initServerConnection(config);
-        nameserver = new NameServer(domainFactory, addrs);
+        nameserver = new NameServer(zoneFactory, addrs);
+        nameserver.addFilter(new SessionFilter(sessionManager));
         nameserver.start();
     }
 
@@ -74,12 +78,12 @@ public class NameServerApp implements Application, LifecycleApplication {
         for ( String s : stringArray ) {
         	nameServers.add(s.trim());
         }
-        domainFactory.setNsNames(nameServers);
+        zoneFactory.setNsNames(nameServers);
         if ( StringUtils.isBlank(primaryNsValue) ) {
         	primaryNsValue = nameServers.get(0);
         }
-        domainFactory.setPrimaryMaster(primaryNsValue.trim());
-        domainFactory.setAdminEmail(emailValue.trim());
+        zoneFactory.setPrimaryNs(primaryNsValue.trim());
+        zoneFactory.setAdminEmail(emailValue.trim());
     }
     
     private void initResourceRecords(AppConfig config) {
@@ -93,7 +97,7 @@ public class NameServerApp implements Application, LifecycleApplication {
             try {
             	InetAddress addr = InetAddress.getByName(serverIp4Value);
                 if ( addr instanceof Inet4Address ) {
-                	domainFactory.setARecord((Inet4Address) addr);
+                	zoneFactory.setARecord((Inet4Address) addr);
             	} else {
             		log.warn("Invalid IPv4 address");
             	}
@@ -107,7 +111,7 @@ public class NameServerApp implements Application, LifecycleApplication {
             try {
                 InetAddress addr = InetAddress.getByName(serverIp6Value);
                 if ( addr instanceof Inet6Address ) {
-                	domainFactory.setAaaaRecord((Inet6Address) addr);
+                	zoneFactory.setAaaaRecord((Inet6Address) addr);
             	} else {
             		log.warn("Invalid IPv6 address");
             	}
@@ -118,7 +122,7 @@ public class NameServerApp implements Application, LifecycleApplication {
 
         /* Set Milton-Cloud's MX Record */
         if ( !StringUtils.isBlank(mxValue) ) {
-        	domainFactory.setMxRecord(mxValue.trim());
+        	zoneFactory.setMxRecord(mxValue.trim());
         }
     }
     
